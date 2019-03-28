@@ -56,15 +56,13 @@ class OccQ : public QObject, public Plugin
     double previous;
 
     vector<QVector3D> translation;
-    QMatrix4x4 bboxMatrix;
 
     bool useOcc;
     bool useBbox;
+    bool useVFC;
     QPainter painter;
 
-    vector<vector<GLfloat>> bboxes;
-
-    void addVBO(unsigned int currentObject, QVector3D translation);
+    void addVBO();
 
     // We will create a VBO for each object in the scene
     vector<GLuint> VAOs;          // ID of VAOs
@@ -73,7 +71,6 @@ class OccQ : public QObject, public Plugin
     vector<GLuint> stBuffers;     // ID of (s,t) buffer 
     vector<GLuint> colorBuffers;  // ID of color buffer  
     vector<GLuint> numIndices;    // Size (number of indices) in each index buffer
-    vector<GLuint> bboxVAOs;
     vector<GLuint> bboxBuffers;
 };
  

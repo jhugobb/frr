@@ -19,7 +19,7 @@
 #include "occlusionQ.h"
 #include <string.h>
 
-#define copies 8
+#define copies 50
 
 vector<GLfloat> bboxPoints = {
     1, 1, 1,
@@ -69,28 +69,44 @@ void OccQ::keyPressEvent(QKeyEvent*e)
 			useOcc=true;
 		}
 	}
+
+  if (e->key()==Qt::Key_V)
+  {
+		if (useVFC) 
+    {
+			useVFC=false;
+		}
+		else 
+    {
+			useVFC=true;
+		}
+	}
 }
 
 void OccQ::cleanUp() {
   GLWidget &g = *glwidget();
+  g.makeCurrent();
   g.glDeleteBuffers(coordBuffers.size(),  &coordBuffers[0]);
   g.glDeleteBuffers(normalBuffers.size(), &normalBuffers[0]);
   g.glDeleteBuffers(stBuffers.size(),  &stBuffers[0]);
   g.glDeleteBuffers(colorBuffers.size(),  &colorBuffers[0]);
+  g.glDeleteBuffers(bboxBuffers.size(), &bboxBuffers[0]);
   g.glDeleteVertexArrays(VAOs.size(), &VAOs[0]);
   coordBuffers.clear();
   normalBuffers.clear();
   stBuffers.clear();
   colorBuffers.clear();
+  bboxBuffers.clear();
   VAOs.clear();
   numIndices.clear();
+  translation.clear();
 }
 
 void OccQ::onPluginLoad() {
 
   GLWidget & g = *glwidget();
   g.makeCurrent();
-  // Carregar shader, compile & link 
+
   vs = new QOpenGLShader(QOpenGLShader::Vertex, this);
   vs->compileSourceFile(g.getPluginPath()+"/../occlusionQ/occlusionQ.vert");
   cout << "VS log:" << vs->log().toStdString() << endl;
@@ -104,35 +120,37 @@ void OccQ::onPluginLoad() {
   program->addShader(fs);
   program->link();
   cout << "Link log:" << program->log().toStdString() << endl;
+
+  // Initialises VAOs and VBOs
+  addVBO();
   
-  QVector3D t;
-  addVBO( scene()->objects().size() - 1, t);
-  
+  // Initialises FPS counter
   current=previous=0;
   QTimer *timer=new QTimer(this);
   connect(timer, SIGNAL(timeout()), this, SLOT(updateFPS()));
   timer->start(1000);
 
-  QTimer *paintTimer=new QTimer(this);
-  connect(paintTimer, SIGNAL(timeout()), glwidget(), SLOT(update()));
-  paintTimer->start();
-
   useOcc = false;
   useBbox = false;
+  useVFC = false;
 }
 
 bool OccQ::drawObject(int i) {
   GLWidget &g = *glwidget();
   g.makeCurrent();
+
   QMatrix4x4 MVP = camera()->projectionMatrix() * camera()->viewMatrix();
   MVP.translate(translation[i]);
+
   program->setUniformValue("bbox", useBbox);
   program->setUniformValue("modelViewProjectionMatrix", MVP);
+  g.glBindVertexArray(VAOs[0]);
+
   if (useBbox) {
-    g.glBindVertexArray(bboxVAOs[0]);
+    // We draw the Bounding Box
     g.glDrawArrays(GL_TRIANGLE_STRIP, 0, 18);
   } else {
-    g.glBindVertexArray(VAOs[0]);
+    // We draw the whole object
     g.glDrawArrays(GL_TRIANGLES, 0, numIndices[0]);
   }
   g.glBindVertexArray(0);
@@ -148,7 +166,6 @@ bool OccQ::drawScene() {
     g.glDepthMask(GL_FALSE);
 
     GLuint queries[copies*copies];
-    GLuint pixelcount;
     g.glGenQueries(copies*copies, queries);
     
     useBbox = true;
@@ -180,18 +197,13 @@ bool OccQ::drawScene() {
 	    drawObject(i);
   }
 
-  
   return true;
 }
 
 void OccQ::preFrame() {
-  // bind shader and define uniforms
   program->bind();
-  program->setUniformValue("n", 6);
-  camera()->setZfar(1000.0);
-  //camera()->setZnear(1.0);
-  
-  
+  camera()->setZfar(400.0);
+  program->setUniformValue("useVFC", useVFC);
   program->setUniformValue("bboxMax", scene()->objects()[0].boundingBox().max());
   program->setUniformValue("bboxMin", scene()->objects()[0].boundingBox().min());
 
@@ -201,23 +213,18 @@ void OccQ::postFrame() {
   painter.begin(glwidget());
   painter.drawText(10,15, QString("%0 fps").arg(current));
   painter.drawText(10,35, QString("Occlusion: %0").arg(useOcc));
+  painter.drawText(10,55, QString("V. F. Culling: %0").arg(useVFC));
   painter.end();
-  // unbind shader
+  
   program->release();
   ++previous;
 }
 
 void OccQ::onObjectAdd() {
-  QVector3D t;
-  addVBO( scene()->objects().size() - 1, t);
-
+  addVBO();
 }
 
-void OccQ::addVBO(unsigned int currentObject, QVector3D tr) {
-  //
-  // For simplicity, we construct VBOs with replicated vertices (a copy
-  // for each triangle to which they belong:
-  //
+void OccQ::addVBO() {
   const Object& obj = scene()->objects()[0];
   unsigned int numvertices = obj.faces().size()*3;  // it's all triangles...
   vector<float> vertices; // (x,y,z)    Final size: 9*number of triangles
@@ -291,6 +298,10 @@ void OccQ::addVBO(unsigned int currentObject, QVector3D tr) {
   GLuint colorBufferID;
   g.glGenBuffers(1, &colorBufferID);
   colorBuffers.push_back(colorBufferID);
+
+  GLuint bboxBufferID;
+  g.glGenBuffers(1, &bboxBufferID);
+  bboxBuffers.push_back(bboxBufferID);
   
   numIndices.push_back(numvertices);
   // Step 3: Define VBO data (coords, normals, ...)
@@ -313,15 +324,6 @@ void OccQ::addVBO(unsigned int currentObject, QVector3D tr) {
   g.glBufferData(GL_ARRAY_BUFFER, sizeof(float)*texCoords.size(), &texCoords[0], GL_STATIC_DRAW);
   g.glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, 0, 0);
   g.glEnableVertexAttribArray(3);
-
-  GLuint bboxVAO;
-  g.glGenVertexArrays(1, &bboxVAO);
-  bboxVAOs.push_back(bboxVAO);
-  g.glBindVertexArray(bboxVAO);
-
-  GLuint bboxBufferID;
-  g.glGenBuffers(1, &bboxBufferID);
-  bboxBuffers.push_back(bboxBufferID);
 
   g.glBindBuffer(GL_ARRAY_BUFFER, bboxBufferID);
   g.glBufferData(GL_ARRAY_BUFFER, sizeof(float)*bboxPoints.size(), &bboxPoints[0], GL_STATIC_DRAW);
