@@ -20,6 +20,7 @@
 #define _OCCQ_H
 
 #include "plugin.h"
+#include "frustum.h"
 #include <QOpenGLShader>
 #include <QOpenGLShaderProgram>
 #include <QPainter>
@@ -34,7 +35,7 @@ class OccQ : public QObject, public Plugin
 
   public:
     void onPluginLoad();
-    bool drawObject(int i);
+    bool drawObject(int i, QMatrix4x4 MVP);
     bool drawScene();
     void preFrame();
     void postFrame();
@@ -62,7 +63,10 @@ class OccQ : public QObject, public Plugin
     bool useVFC;
     QPainter painter;
 
+    Frustum frustum;
+
     void addVBO();
+    void calculateFrustum();
 
     // We will create a VBO for each object in the scene
     vector<GLuint> VAOs;          // ID of VAOs

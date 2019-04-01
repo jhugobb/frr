@@ -1,2 +1,2 @@
-TARGET     = $$qtLibraryTarget(occlusionQ3)
+TARGET     = $$qtLibraryTarget(occlusionQ1)
 include(../common.pro)

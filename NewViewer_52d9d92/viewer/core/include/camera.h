@@ -150,6 +150,11 @@ public:
     */
     void setZfar(float z); 
 
+	/*!
+	Returns view reference point
+	*/
+	Point vrp();
+
 
 private:
     Point pvrp;  // view reference point

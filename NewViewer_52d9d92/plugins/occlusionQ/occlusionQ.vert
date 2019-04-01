@@ -11,14 +11,6 @@ layout (location=2) in vec3 color;
 layout (location=4) in vec3 vertexBox;
 out vec4 col;
 
-bool in_frustum(mat4 M, vec3 p) {
-  vec4 Pclip = M * vec4(p, 1.);
-  return abs(Pclip.x) < Pclip.w && 
-         abs(Pclip.y) < Pclip.w && 
-                    0 < Pclip.z && 
-              Pclip.z < Pclip.w;
-}
-
 void main() {
   if (bbox){
     mat4 scale=mat4(vec4(bboxMax.x-bboxMin.x, 0, 0, 0),
@@ -27,15 +19,8 @@ void main() {
                     vec4(0, 0, 0, 1));
     vec4 BC=vec4((bboxMax+bboxMin)/2, 0);
     vec4 V=scale*vec4(vertexBox-vec3(0.5), 1);
-    if (useVFC) {
-      if (in_frustum(modelViewProjectionMatrix, vertexBox)) {
-        gl_Position=modelViewProjectionMatrix*(BC+V);
-        col = vec4(color*normals, 1.0);
-      }
-    } else {
-      gl_Position=modelViewProjectionMatrix*(BC+V);
-      col = vec4(color*normals, 1.0);
-    }
+    gl_Position=modelViewProjectionMatrix*(BC+V);
+    col = vec4(color*normals, 1.0);
   } else {
     gl_Position = modelViewProjectionMatrix * vec4(vertex,1.0);
     col=vec4(color,1.0);

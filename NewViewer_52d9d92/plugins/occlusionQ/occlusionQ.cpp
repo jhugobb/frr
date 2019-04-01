@@ -17,6 +17,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "occlusionQ.h"
+#include "frustum.h"
 #include <string.h>
 
 #define copies 50
@@ -60,25 +61,27 @@ void OccQ::keyPressEvent(QKeyEvent*e)
 {
 	if (e->key()==Qt::Key_O)
   {
+    useVFC = false;
 		if (useOcc) 
     {
-			useOcc=false;
+			useOcc = false;
 		}
 		else 
     {
-			useOcc=true;
+			useOcc = true;
 		}
 	}
 
   if (e->key()==Qt::Key_V)
   {
+    useOcc = false;
 		if (useVFC) 
     {
-			useVFC=false;
+			useVFC = false;
 		}
 		else 
     {
-			useVFC=true;
+			useVFC = true;
 		}
 	}
 }
@@ -135,12 +138,9 @@ void OccQ::onPluginLoad() {
   useVFC = false;
 }
 
-bool OccQ::drawObject(int i) {
+bool OccQ::drawObject(int i, QMatrix4x4 MVP) {
   GLWidget &g = *glwidget();
   g.makeCurrent();
-
-  QMatrix4x4 MVP = camera()->projectionMatrix() * camera()->viewMatrix();
-  MVP.translate(translation[i]);
 
   program->setUniformValue("bbox", useBbox);
   program->setUniformValue("modelViewProjectionMatrix", MVP);
@@ -160,6 +160,9 @@ bool OccQ::drawObject(int i) {
 bool OccQ::drawScene() {
   GLWidget &g = *glwidget();
   g.makeCurrent();
+
+  QMatrix4x4 view = camera()->projectionMatrix() * camera()->viewMatrix();
+  QMatrix4x4 MVP;
   if (useOcc) {
 
     g.glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
@@ -167,12 +170,13 @@ bool OccQ::drawScene() {
 
     GLuint queries[copies*copies];
     g.glGenQueries(copies*copies, queries);
-    
     useBbox = true;
     for(unsigned int i=0; i<copies*copies; i++) {
+      MVP = QMatrix4x4(view);
+      MVP.translate(translation[i]);
       g.glBeginQuery(GL_ANY_SAMPLES_PASSED, queries[i]);
       //draw BB 
-      drawObject(i);
+      drawObject(i, MVP);
       g.glEndQuery(GL_ANY_SAMPLES_PASSED);
     }
     useBbox = false;
@@ -189,20 +193,43 @@ bool OccQ::drawScene() {
     GLuint result;
     for (unsigned int i = 0; i < copies*copies; i++) {
       g.glGetQueryObjectuiv(queries[i], GL_QUERY_RESULT, &result);
-      if (result != 0)
-        drawObject(i);
+      if (result != 0){
+        MVP = QMatrix4x4(view);
+        MVP.translate(translation[i]);
+        drawObject(i, MVP);
+      }
+       
     }
+  } else if (useVFC) {
+    QVector4D center = QVector4D((scene()->objects()[0]).boundingBox().center(),1);
+    QVector4D max = QVector4D((scene()->objects()[0]).boundingBox().max(), 1);
+    for(unsigned int i=0; i<copies*copies; i++) { // for each buffer (that is, for each object)
+      MVP = QMatrix4x4(view);
+      MVP.translate(translation[i]);
+      QVector3D c = (center + translation[i]).toVector3D();
+
+      QVector3D m = (max + translation[i]).toVector3D();
+
+      int result = frustum.sphereInFrustum(c, c.distanceToPoint(m));
+      if (result != 0) {
+        drawObject(i, MVP);
+      }
+    } 
   } else {
-    for(unsigned int i=0; i<copies*copies; i++) // for each buffer (that is, for each object)
-	    drawObject(i);
+    for(unsigned int i=0; i<copies*copies; i++) {
+      MVP = QMatrix4x4(view);
+      MVP.translate(translation[i]);
+      drawObject(i, MVP);
+    }
   }
 
   return true;
 }
 
 void OccQ::preFrame() {
+  calculateFrustum();
   program->bind();
-  camera()->setZfar(400.0);
+  //camera()->setZfar(100.0);
   program->setUniformValue("useVFC", useVFC);
   program->setUniformValue("bboxMax", scene()->objects()[0].boundingBox().max());
   program->setUniformValue("bboxMin", scene()->objects()[0].boundingBox().min());
@@ -332,5 +359,19 @@ void OccQ::addVBO() {
   
   g.glBindBuffer(GL_ARRAY_BUFFER,0);
   g.glBindVertexArray(0);
+}
+
+
+void OccQ::calculateFrustum() {
+
+  QVector3D eye = camera()->getObs();
+  float znear = camera()->znear();
+  float zfar = camera()->zfar();
+  float fov = camera()->fov();
+  float aspectRatio = camera()->aspectRatio();
+  QMatrix4x4 view = camera()->viewMatrix();
+
+  frustum = Frustum(eye, znear, zfar, fov, aspectRatio, view);
+
 }
 

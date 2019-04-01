@@ -180,4 +180,7 @@ void Camera::setAspectRatio(float ar)
     paspectRatio = ar;
 } 
 
-
+Point Camera::vrp() 
+{
+    return Point(pvrp);
+}
