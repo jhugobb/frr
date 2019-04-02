@@ -20,7 +20,7 @@
 #include "frustum.h"
 #include <string.h>
 
-#define copies 50
+#define copies 100
 
 vector<GLfloat> bboxPoints = {
     1, 1, 1,
@@ -229,7 +229,7 @@ bool OccQ::drawScene() {
 void OccQ::preFrame() {
   calculateFrustum();
   program->bind();
-  //camera()->setZfar(100.0);
+  camera()->setZfar(200.0);
   program->setUniformValue("useVFC", useVFC);
   program->setUniformValue("bboxMax", scene()->objects()[0].boundingBox().max());
   program->setUniformValue("bboxMin", scene()->objects()[0].boundingBox().min());
