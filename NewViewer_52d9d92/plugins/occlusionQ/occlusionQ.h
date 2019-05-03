@@ -63,10 +63,12 @@ class OccQ : public QObject, public Plugin
     bool useVFC;
     QPainter painter;
 
+    QMatrix4x4 scale; 
     Frustum frustum;
 
     void addVBO();
     void calculateFrustum();
+    void calBboxScale();
 
     // We will create a VBO for each object in the scene
     vector<GLuint> VAOs;          // ID of VAOs
@@ -76,6 +78,8 @@ class OccQ : public QObject, public Plugin
     vector<GLuint> colorBuffers;  // ID of color buffer  
     vector<GLuint> numIndices;    // Size (number of indices) in each index buffer
     vector<GLuint> bboxBuffers;
+
+    vector<GLfloat> bboxPoints;
 };
  
  #endif

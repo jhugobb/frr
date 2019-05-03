@@ -6,6 +6,10 @@ To run this program you need to install the viewer as per the NewViewer_52d9d92 
 Once installed, run `./GLarenaPL`. Press the _spacebar_ and select _open plugin_ option and navigate to the "occlusionQ" plugin. 
 Select the "occlusionQ.pro" file and the plugin should load.
 
+## Implementation
+This application is built for Linux in C++ using the provided viewer. The main body of the algorithm is in the `drawScene()` of the "occlusionQ.cpp" file. 
+Depending on the selected optimisation, the rendering of objects is done differently. If Occlusion Queries is selected, we will perform a non-screen render of the bounding box of the objects and check if they were visible. If they were, we render the corresponding object normally, if not, we discard the rendering of said object. If View Frustum Culling is selected, then we use the representation of a bounding sphere, as it speeds calculations, to check if it is outside of our frustum. If the sphere is completely outside of our view frustum, then we discard that object and render it otherwise. When no mode is selected we perform a normal rendering.
+
 ## How to configure 
 
 ### How to switch between optimisation algorithms

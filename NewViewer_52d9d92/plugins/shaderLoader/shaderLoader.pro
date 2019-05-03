@@ -1,5 +1,2 @@
-TARGET     = $$qtLibraryTarget(shaderloader)  # Nom del plugin 
-
+TARGET     = $$qtLibraryTarget(shaderLoader1)
 include(../common.pro)
-
-

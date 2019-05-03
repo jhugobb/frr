@@ -20,28 +20,7 @@
 #include "frustum.h"
 #include <string.h>
 
-#define copies 100
-
-vector<GLfloat> bboxPoints = {
-    1, 1, 1,
-    0, 1, 1,
-    1, 0, 1,
-    0, 0, 1,
-    1, 0, 0,
-    0, 0, 0,
-    1, 1, 0,
-    0, 1, 0,
-    1, 1, 1,
-    0, 1, 1,
-    0, 1, 1,
-    0, 1, 0,
-    0, 0, 1,
-    0, 0, 0,
-    1, 0, 1,
-    1, 0, 0,
-    1, 1, 1,
-    1, 1, 0
-  };
+#define copies 40
 
 OccQ::~OccQ() {
   cleanUp();
@@ -110,6 +89,27 @@ void OccQ::onPluginLoad() {
   GLWidget & g = *glwidget();
   g.makeCurrent();
 
+    bboxPoints = {
+    1, 1, 1,
+    0, 1, 1,
+    1, 0, 1,
+    0, 0, 1,
+    1, 0, 0,
+    0, 0, 0,
+    1, 1, 0,
+    0, 1, 0,
+    1, 1, 1,
+    0, 1, 1,
+    0, 1, 1,
+    0, 1, 0,
+    0, 0, 1,
+    0, 0, 0,
+    1, 0, 1,
+    1, 0, 0,
+    1, 1, 1,
+    1, 1, 0
+  };
+
   vs = new QOpenGLShader(QOpenGLShader::Vertex, this);
   vs->compileSourceFile(g.getPluginPath()+"/../occlusionQ/occlusionQ.vert");
   cout << "VS log:" << vs->log().toStdString() << endl;
@@ -126,6 +126,9 @@ void OccQ::onPluginLoad() {
 
   // Initialises VAOs and VBOs
   addVBO();
+
+  // Calculate BBox scaling
+  calBboxScale();
   
   // Initialises FPS counter
   current=previous=0;
@@ -142,7 +145,8 @@ bool OccQ::drawObject(int i, QMatrix4x4 MVP) {
   GLWidget &g = *glwidget();
   g.makeCurrent();
 
-  program->setUniformValue("bbox", useBbox);
+  if (useBbox) program->setUniformValue("scale", scale);
+  else program->setUniformValue("scale", QMatrix4x4());
   program->setUniformValue("modelViewProjectionMatrix", MVP);
   g.glBindVertexArray(VAOs[0]);
 
@@ -227,10 +231,9 @@ bool OccQ::drawScene() {
 }
 
 void OccQ::preFrame() {
-  calculateFrustum();
   program->bind();
   camera()->setZfar(200.0);
-  program->setUniformValue("useVFC", useVFC);
+  calculateFrustum();
   program->setUniformValue("bboxMax", scene()->objects()[0].boundingBox().max());
   program->setUniformValue("bboxMin", scene()->objects()[0].boundingBox().min());
 
@@ -373,5 +376,21 @@ void OccQ::calculateFrustum() {
 
   frustum = Frustum(eye, znear, zfar, fov, aspectRatio, view);
 
+}
+void OccQ::calBboxScale() {
+  const Object& obj = scene()->objects()[0];
+  Box box = obj.boundingBox();
+  scale = QMatrix4x4();
+  scale(0,0) = box.max().x() - box.min().x();
+  scale(1,1) = box.max().y() - box.min().y();
+  scale(2,2) = box.max().z() - box.min().z();
+  scale(3,3) = 1;
+  for (int i = 0; i < 18; i+=3) {
+    QVector3D point = QVector3D(bboxPoints[i], bboxPoints[i+1], bboxPoints[i+2]);
+    QVector4D v = scale*QVector4D(point-QVector3D(0.5,0.5,0.5), 1);
+    bboxPoints[i] = point.x() + box.center().x();
+    bboxPoints[i+1] = point.y() + box.center().y();
+    bboxPoints[i+2] = point.z() + box.center().z();
+  }
 }
 
