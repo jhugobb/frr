@@ -34,3 +34,5 @@
 .vscode
 frustum
 build
+
+*.zip
