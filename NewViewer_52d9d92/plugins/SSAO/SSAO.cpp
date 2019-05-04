@@ -39,11 +39,11 @@ void SSAO::onPluginLoad()
 	// Resize to power-of-two viewport
 
 	// Carregar shader, compile & link 
-	vs = new QOpenGLShader(QOpenGLShader::Vertex, this);
-	vs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/SSAO.vert");
+	ssaovs = new QOpenGLShader(QOpenGLShader::Vertex, this);
+	ssaovs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/ssao.vert");
 
-	fs = new QOpenGLShader(QOpenGLShader::Fragment, this);
-	fs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/SSAO.frag");
+	ssaofs = new QOpenGLShader(QOpenGLShader::Fragment, this);
+	ssaofs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/ssao.frag");
 
 	gvs = new QOpenGLShader(QOpenGLShader::Vertex, this);
 	gvs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/gbuffer.vert");
@@ -51,33 +51,44 @@ void SSAO::onPluginLoad()
 	gfs = new QOpenGLShader(QOpenGLShader::Fragment, this);
 	gfs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/gbuffer.frag");
 
-	program = new QOpenGLShaderProgram(this);
+  lightvs = new QOpenGLShader(QOpenGLShader::Vertex, this);
+	lightvs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/light.vert");
+
+	lightfs = new QOpenGLShader(QOpenGLShader::Fragment, this);
+	lightfs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/light.frag");
+
+
+	ssaoProgram = new QOpenGLShaderProgram(this);
 	gprogram = new QOpenGLShaderProgram(this);
-	program->addShader(vs);
-	program->addShader(fs);
+  lightProgram = new QOpenGLShaderProgram(this);
+	ssaoProgram->addShader(ssaovs);
+	ssaoProgram->addShader(ssaofs);
 	gprogram->addShader(gvs);
 	gprogram->addShader(gfs);
-	program->link();
+  lightProgram->addShader(lightvs);
+	lightProgram->addShader(lightfs);
+	ssaoProgram->link();
 	gprogram->link();
-	if (!program->isLinked()) cout << "Shader link error" << endl; 
+  lightProgram->link();
+	if (!ssaoProgram->isLinked()) cout << "Shader link error" << endl; 
+  if (!lightProgram->isLinked()) cout << "Shader link error" << endl; 
 	if (!gprogram->isLinked()) cout << "Shader link error" << endl; 
 
-  cout << "hi" << endl;
-  //g.resize(512, 512);
-  //g.glEnable(GL_DEPTH_TEST);
+  g.glEnable(GL_DEPTH_TEST);
 			
 	for(unsigned int i=0; i<scene()->objects().size(); i++)
     addVBO(i);
 
   cout << scene()->objects().size() << endl;
-  float linear = 0-7;
+  float linear = 0.7;
   float constant = 1;
   float quadratic = 1.8;
   radius = (-linear + std::sqrt(linear * linear - 4 * quadratic * (constant - (256.0f / 5.0f)))) / (2.0f * quadratic);
 
-  cout << radius << endl;
   setFrameBuffer();
-  g.resize(512, 512);
+  genQuad();
+  genKernels(); 
+  g.resize(1280, 720);
 }
 
 void SSAO::preFrame()
@@ -99,58 +110,24 @@ bool SSAO::drawObjectFB(unsigned int i)
 {
   GLWidget &g = *glwidget();
 
-  gprogram->setUniformValue("texture_diffuse", 3);
+  //gprogram->setUniformValue("texture_diffuse", 3);
 
-  g.glActiveTexture(GL_TEXTURE3);
-  g.glBindTexture(GL_TEXTURE_2D, textures_diffuse[i]);
+  //g.glActiveTexture(GL_TEXTURE3);
+  //g.glBindTexture(GL_TEXTURE_2D, textures_diffuse[i]);
 
 	g.glBindVertexArray(VAOs[i]);
  
 	g.glDrawArrays(GL_TRIANGLES, 0, numIndices[i]);
 	
   g.glBindVertexArray(0);
-  g.glBindTexture(GL_TEXTURE_2D, 0);
+  //g.glBindTexture(GL_TEXTURE_2D, 0);
 	return true; // return true only if implemented
 }
 
 void SSAO::drawQuad()
 {
   GLWidget &g = *glwidget();
-  if (quadVAO == 0)
-  {
-    vector<float> quadVertices = {
-      // positions        
-      -1.0f,  1.0f, 0.0f,
-      -1.0f, -1.0f, 0.0f,
-      1.0f,  1.0f, 0.0f, 
-      1.0f, -1.0f, 0.0f,
-    };
 
-    vector<float> texCoords = {
-       0.0f, 1.0f,
-       0.0f, 0.0f,
-       1.0f, 1.0f,
-       1.0f, 0.0f,
-    };
-    GLuint quadVBO;
-    GLuint quadTex;
-    // setup plane VAO
-    g.glGenVertexArrays(1, &quadVAO);
-    g.glBindVertexArray(quadVAO);
-    g.glGenBuffers(1, &quadVBO);
-    g.glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
-    g.glBufferData(GL_ARRAY_BUFFER, sizeof(float) * quadVertices.size(), &quadVertices[0], GL_STATIC_DRAW);
-    g.glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
-    g.glEnableVertexAttribArray(0);
-
-    g.glGenBuffers(1, &quadTex);
-    g.glBindBuffer(GL_ARRAY_BUFFER, quadTex);
-    g.glBufferData(GL_ARRAY_BUFFER, sizeof(float)*texCoords.size(), &texCoords[0], GL_STATIC_DRAW);
-    g.glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, 0); 
-    g.glEnableVertexAttribArray(1);
-
-    g.glBindVertexArray(0);
-  }
   g.glBindVertexArray(quadVAO);
   g.glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
   g.glBindVertexArray(0);
@@ -163,7 +140,7 @@ bool SSAO::paintGL()
 	g.glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 	// G buffer pass
 	QMatrix4x4 MVP = camera()->projectionMatrix() * camera()->viewMatrix();
-  fbo->bind();
+  gBuf->bind();
 	gprogram->bind();
 	gprogram->setUniformValue("MVP", MVP);
 	//g.glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
@@ -172,26 +149,24 @@ bool SSAO::paintGL()
   for (unsigned int i=0; i < scene()->objects().size(); i++)
 	  drawObjectFB(i);
 
-  fbo->release();
+  gBuf->release();
   gprogram->release();
   g.glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 
-	program->bind();
-	program->setUniformValue("viewPos", camera()->getObs());
-  program->setUniformValue("gPosition", 0);
-  program->setUniformValue("gNormal", 1);
-  program->setUniformValue("gAlbedoSpec", 2);
-  program->setUniformValue("radius", radius);
-  program->setUniformValue("lightPosition", QVector3D(1,1,1));
-  program->setUniformValue("lightColor", QVector3D(1,1,1));
-  program->setUniformValue("MVP", MVP);
+  ssaoBuf->bind();
+  ssaoProgram->bind();
+  ssaoProgram->setUniformValue("gPosition", 0);
+  ssaoProgram->setUniformValue("gNormal", 1);
+  ssaoProgram->setUniformValue("texNoise", 2);
+  ssaoProgram->setUniformValueArray("samples", ssaoKernel.data(), ssaoKernel.size());
+  ssaoProgram->setUniformValue("projection", camera()->projectionMatrix());
 
-  g.glActiveTexture(GL_TEXTURE0);
-  g.glBindTexture(GL_TEXTURE_2D, fbo->textures()[0]);
-  g.glActiveTexture(GL_TEXTURE1);
-  g.glBindTexture(GL_TEXTURE_2D, fbo->textures()[1]);
-  g.glActiveTexture(GL_TEXTURE2);
-  g.glBindTexture(GL_TEXTURE_2D, fbo->textures()[2]);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, gBuf->textures()[0]);
+  glActiveTexture(GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_2D, gBuf->textures()[1]);
+  glActiveTexture(GL_TEXTURE2);
+  glBindTexture(GL_TEXTURE_2D, noiseTexture);
 
   drawQuad();
 
@@ -201,7 +176,36 @@ bool SSAO::paintGL()
   g.glBindTexture(GL_TEXTURE_2D, 0);
   g.glActiveTexture(GL_TEXTURE2);
   g.glBindTexture(GL_TEXTURE_2D, 0);
-  program->release();
+  ssaoBuf->release();
+  ssaoProgram->release();
+
+  g.glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+	lightProgram->bind();
+	lightProgram->setUniformValue("viewPos", camera()->getObs());
+  lightProgram->setUniformValue("gPosition", 0);
+  lightProgram->setUniformValue("gNormal", 1);
+  lightProgram->setUniformValue("gAlbedoSpec", 2);
+  lightProgram->setUniformValue("radius", radius);
+  lightProgram->setUniformValue("lightPosition",  QVector3D(1.5,1.5,1.5));
+  lightProgram->setUniformValue("lightColor", QVector3D(1,1,1));
+  lightProgram->setUniformValue("MVP", MVP);
+
+  g.glActiveTexture(GL_TEXTURE0);
+  g.glBindTexture(GL_TEXTURE_2D, gBuf->textures()[0]);
+  g.glActiveTexture(GL_TEXTURE1);
+  g.glBindTexture(GL_TEXTURE_2D, gBuf->textures()[1]);
+  g.glActiveTexture(GL_TEXTURE2);
+  g.glBindTexture(GL_TEXTURE_2D, gBuf->textures()[2]);
+
+  drawQuad();
+
+  g.glActiveTexture(GL_TEXTURE0);
+  g.glBindTexture(GL_TEXTURE_2D, 0);
+  g.glActiveTexture(GL_TEXTURE1);
+  g.glBindTexture(GL_TEXTURE_2D, 0);
+  g.glActiveTexture(GL_TEXTURE2);
+  g.glBindTexture(GL_TEXTURE_2D, 0);
+  lightProgram->release();
 	
 	return true;
 }
@@ -306,7 +310,43 @@ void SSAO::addVBO(unsigned int i) {
   g.glBindBuffer(GL_ARRAY_BUFFER,0);
   g.glBindVertexArray(0);
 
-  loadTexture();
+  //loadTexture();
+}
+
+void SSAO::genQuad() {
+	GLWidget &g = *glwidget();
+  vector<float> quadVertices = {
+    // positions        
+    -1.0f,  1.0f, 0.0f,
+    -1.0f, -1.0f, 0.0f,
+    1.0f,  1.0f, 0.0f, 
+    1.0f, -1.0f, 0.0f,
+  };
+
+  vector<float> texCoords = {
+      0.0f, 1.0f,
+      0.0f, 0.0f,
+      1.0f, 1.0f,
+      1.0f, 0.0f,
+  };
+  GLuint quadVBO;
+  GLuint quadTex;
+  // setup plane VAO
+  g.glGenVertexArrays(1, &quadVAO);
+  g.glBindVertexArray(quadVAO);
+  g.glGenBuffers(1, &quadVBO);
+  g.glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+  g.glBufferData(GL_ARRAY_BUFFER, sizeof(float) * quadVertices.size(), &quadVertices[0], GL_STATIC_DRAW);
+  g.glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+  g.glEnableVertexAttribArray(0);
+
+  g.glGenBuffers(1, &quadTex);
+  g.glBindBuffer(GL_ARRAY_BUFFER, quadTex);
+  g.glBufferData(GL_ARRAY_BUFFER, sizeof(float)*texCoords.size(), &texCoords[0], GL_STATIC_DRAW);
+  g.glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, 0); 
+  g.glEnableVertexAttribArray(1);
+
+  g.glBindVertexArray(0);
 }
 
 void SSAO::loadTexture() {
@@ -342,53 +382,55 @@ void SSAO::setFrameBuffer() {
 	// g.glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
 
 
-  const unsigned int SCR_WIDTH = 512;
-  const unsigned int SCR_HEIGHT = 512;
+  const unsigned int SCR_WIDTH = 1280;
+  const unsigned int SCR_HEIGHT = 720;
 
-  fbo = new QOpenGLFramebufferObject(512, 512);
-  fbo->addColorAttachment(512, 512);
-  fbo->addColorAttachment(512, 512);
-	
-  // - position color buffer
-	// g.glGenTextures(1, &gPosition);
-	// g.glBindTexture(GL_TEXTURE_2D, gPosition);
-	// g.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGB, GL_FLOAT, NULL);
-	// g.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	// g.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	// g.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gPosition, 0);
-
-	// // - normal color buffer
-	// g.glGenTextures(1, &gNormal);
-	// g.glBindTexture(GL_TEXTURE_2D, gNormal);
-	// g.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGB, GL_FLOAT, NULL);
-	// g.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	// g.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	// g.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, gNormal, 0);
-
-	// // - color + specular color buffer
-	// g.glGenTextures(1, &gAlbedoSpec);
-	// g.glBindTexture(GL_TEXTURE_2D, gAlbedoSpec);
-	// g.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-	// g.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	// g.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	// g.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, gAlbedoSpec, 0);
+  gBuf = new QOpenGLFramebufferObject(SCR_WIDTH, SCR_HEIGHT, QOpenGLFramebufferObject::CombinedDepthStencil);
+  gBuf->addColorAttachment(SCR_WIDTH, SCR_HEIGHT);
+  gBuf->addColorAttachment(SCR_WIDTH, SCR_HEIGHT);
 
   unsigned int attachments[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
   g.glDrawBuffers(3, attachments);
 
-  // - depth buffer
-  // g.glGenRenderbuffers(1, &rboDepth);
-  // g.glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
-  // g.glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, SCR_WIDTH, SCR_HEIGHT);
-  // g.glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
-  // finally check if framebuffer is complete
+  ssaoBuf = new QOpenGLFramebufferObject(SCR_WIDTH, SCR_HEIGHT, QOpenGLFramebufferObject::CombinedDepthStencil);
 
-  // if (g.glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-  //   std::cout << "Framebuffer not complete!" << std::endl;
-  // g.glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
 
-  for (int i = 0; i < 3; i++) {
-    cout << (fbo->textures())[i] << endl;
+float lerp(float a, float b, float f) {
+  return a + f * (b - a);
+} 
+
+void SSAO::genKernels() {
+  GLWidget& g = *glwidget();
+  std::uniform_real_distribution<GLfloat> randomFloats(0.0, 1.0); // generates random floats between 0.0 and 1.0
+  std::default_random_engine generator;
+  for (unsigned int i = 0; i < 64; ++i) {
+    QVector3D sample(randomFloats(generator) * 2.0 - 1.0, randomFloats(generator) * 2.0 - 1.0, randomFloats(generator));
+    sample.normalize();
+    sample *= randomFloats(generator);
+    float scale = float(i) / 64.0;
+
+    // scale samples s.t. they're more aligned to center of kernel
+    scale = lerp(0.1f, 1.0f, scale * scale);
+    sample *= scale;
+    ssaoKernel.push_back(sample);
   }
+
+  std::vector<QVector3D> ssaoNoise;
+  for (unsigned int i = 0; i < 16; i++) {
+    QVector3D noise(
+      randomFloats(generator) * 2.0 - 1.0, 
+      randomFloats(generator) * 2.0 - 1.0, 
+      0.0f); 
+    ssaoNoise.push_back(noise);
+  }  
+
+  g.glGenTextures(1, &noiseTexture);
+  g.glBindTexture(GL_TEXTURE_2D, noiseTexture);
+  g.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, 4, 4, 0, GL_RGB, GL_FLOAT, &ssaoNoise[0]);
+  g.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  g.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  g.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  g.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
 }

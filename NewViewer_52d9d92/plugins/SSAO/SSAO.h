@@ -4,6 +4,7 @@
 #include "plugin.h" 
 #include <cmath>
 #include <QOpenGLFramebufferObject>
+#include <random>
 
 class SSAO: public QObject, public Plugin
 {
@@ -32,13 +33,18 @@ class SSAO: public QObject, public Plugin
 		void drawQuad();
 		void setQuad();
 		void setFrameBuffer();
+		void genKernels();
+		void genQuad();
 
-		QOpenGLShaderProgram* program;
+		QOpenGLShaderProgram* ssaoProgram;
 		QOpenGLShaderProgram* gprogram;
-    QOpenGLShader* vs;
-    QOpenGLShader* fs;  
+		QOpenGLShaderProgram* lightProgram;
+    QOpenGLShader* ssaovs;
+    QOpenGLShader* ssaofs;  
 		QOpenGLShader* gvs;
 		QOpenGLShader* gfs;
+		QOpenGLShader* lightvs;
+		QOpenGLShader* lightfs;
     GLuint textureId;
     Camera lightCamera;
 
@@ -60,7 +66,12 @@ class SSAO: public QObject, public Plugin
 		GLuint rboDepth;
 		GLuint quadVAO;
 
-		QOpenGLFramebufferObject *fbo;
+		QOpenGLFramebufferObject *gBuf;
+		QOpenGLFramebufferObject *ssaoBuf;
+
+		// SSAO
+		GLuint noiseTexture;
+		std::vector<QVector3D> ssaoKernel;
 };
 
 #endif
