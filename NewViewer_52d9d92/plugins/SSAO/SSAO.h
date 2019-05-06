@@ -35,12 +35,17 @@ class SSAO: public QObject, public Plugin
 		void setFrameBuffer();
 		void genKernels();
 		void genQuad();
+		void setUpShaders();
 
 		QOpenGLShaderProgram* ssaoProgram;
 		QOpenGLShaderProgram* gprogram;
 		QOpenGLShaderProgram* lightProgram;
+		QOpenGLShaderProgram* nossaoProgram;
+		QOpenGLShaderProgram* blurProgram;
     QOpenGLShader* ssaovs;
     QOpenGLShader* ssaofs;  
+		QOpenGLShader* nossaofs;
+		QOpenGLShader* blurfs;
 		QOpenGLShader* gvs;
 		QOpenGLShader* gfs;
 		QOpenGLShader* lightvs;
@@ -48,7 +53,11 @@ class SSAO: public QObject, public Plugin
     GLuint textureId;
     Camera lightCamera;
 
+		QVector3D lightPos;
+
 		float radius;
+		bool useAO;
+		bool useBlur;
 
 		// We will create a VBO for each object in the scene
     vector<GLuint> VAOs;          // ID of VAOs
@@ -68,6 +77,7 @@ class SSAO: public QObject, public Plugin
 
 		QOpenGLFramebufferObject *gBuf;
 		QOpenGLFramebufferObject *ssaoBuf;
+		QOpenGLFramebufferObject *blurBuf;
 
 		// SSAO
 		GLuint noiseTexture;

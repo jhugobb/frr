@@ -13,8 +13,8 @@ uniform vec3 lightColor;
 uniform float radius;
 uniform vec3 viewPos;
 
-float linear = 0.7;
-float quadratic = 1.8;
+float linear = 0.09;
+float quadratic = 0.032;
 float constant = 1;
 void main()
 {             
@@ -26,7 +26,7 @@ void main()
 
     vec3 ambient = vec3(0.3 * Diffuse * AmbientOcclusion);
     vec3 lighting = ambient; 
-    vec3 viewDir = normalize(viewPos - FragPos);
+    vec3 viewDir = normalize(- FragPos);
     // diffuse
     vec3 lightDir = normalize(lightPosition - FragPos);
     vec3 diffuse = max(dot(Normal, lightDir), 0.0) * Diffuse * lightColor;

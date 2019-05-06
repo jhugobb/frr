@@ -8,14 +8,15 @@ out vec3 FragPos;
 out vec2 TexCoords;
 out vec3 Normal;
 
-uniform mat4 MVP;
+uniform mat4 view;
+uniform mat4 projection;
 
 void main()
 {
-    vec4 worldPos = MVP * vec4(aPos, 1.0);
+    vec4 worldPos = view * vec4(aPos, 1.0);
     FragPos = worldPos.xyz; 
     TexCoords = aTexCoords;
     Normal = aNormal;
 
-    gl_Position = worldPos;
+    gl_Position = projection *  worldPos;
 }

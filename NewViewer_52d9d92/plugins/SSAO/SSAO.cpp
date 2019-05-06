@@ -38,42 +38,8 @@ void SSAO::onPluginLoad()
 	g.makeCurrent();
 	// Resize to power-of-two viewport
 
-	// Carregar shader, compile & link 
-	ssaovs = new QOpenGLShader(QOpenGLShader::Vertex, this);
-	ssaovs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/ssao.vert");
-
-	ssaofs = new QOpenGLShader(QOpenGLShader::Fragment, this);
-	ssaofs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/ssao.frag");
-
-	gvs = new QOpenGLShader(QOpenGLShader::Vertex, this);
-	gvs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/gbuffer.vert");
-
-	gfs = new QOpenGLShader(QOpenGLShader::Fragment, this);
-	gfs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/gbuffer.frag");
-
-  lightvs = new QOpenGLShader(QOpenGLShader::Vertex, this);
-	lightvs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/light.vert");
-
-	lightfs = new QOpenGLShader(QOpenGLShader::Fragment, this);
-	lightfs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/light.frag");
-
-
-	ssaoProgram = new QOpenGLShaderProgram(this);
-	gprogram = new QOpenGLShaderProgram(this);
-  lightProgram = new QOpenGLShaderProgram(this);
-	ssaoProgram->addShader(ssaovs);
-	ssaoProgram->addShader(ssaofs);
-	gprogram->addShader(gvs);
-	gprogram->addShader(gfs);
-  lightProgram->addShader(lightvs);
-	lightProgram->addShader(lightfs);
-	ssaoProgram->link();
-	gprogram->link();
-  lightProgram->link();
-	if (!ssaoProgram->isLinked()) cout << "Shader link error" << endl; 
-  if (!lightProgram->isLinked()) cout << "Shader link error" << endl; 
-	if (!gprogram->isLinked()) cout << "Shader link error" << endl; 
-
+  setUpShaders();
+	
   g.glEnable(GL_DEPTH_TEST);
 			
 	for(unsigned int i=0; i<scene()->objects().size(); i++)
@@ -88,7 +54,56 @@ void SSAO::onPluginLoad()
   setFrameBuffer();
   genQuad();
   genKernels(); 
+  useAO = false;
+  useBlur = false;
   g.resize(1280, 720);
+}
+
+void SSAO::setUpShaders() {
+	ssaovs = new QOpenGLShader(QOpenGLShader::Vertex, this);
+	ssaovs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/shaders/ssao.vert");
+	ssaofs = new QOpenGLShader(QOpenGLShader::Fragment, this);
+	ssaofs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/shaders/ssao.frag");
+  ssaoProgram = new QOpenGLShaderProgram(this);
+	ssaoProgram->addShader(ssaovs);
+	ssaoProgram->addShader(ssaofs);
+	ssaoProgram->link();
+
+	nossaofs = new QOpenGLShader(QOpenGLShader::Fragment, this);
+	nossaofs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/shaders/nossao.frag");
+  nossaoProgram = new QOpenGLShaderProgram(this);
+  nossaoProgram->addShader(ssaovs);
+  nossaoProgram->addShader(nossaofs);
+  nossaoProgram->link();
+
+  blurfs = new QOpenGLShader(QOpenGLShader::Fragment, this);
+  blurfs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/shaders/blurssao.frag");
+  blurProgram = new QOpenGLShaderProgram(this);
+  blurProgram->addShader(ssaovs);
+  blurProgram->addShader(blurfs);
+  blurProgram->link();
+
+	gvs = new QOpenGLShader(QOpenGLShader::Vertex, this);
+	gvs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/shaders/gbuffer.vert");
+	gfs = new QOpenGLShader(QOpenGLShader::Fragment, this);
+	gfs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/shaders/gbuffer.frag");
+	gprogram = new QOpenGLShaderProgram(this);
+  gprogram->addShader(gvs);
+	gprogram->addShader(gfs);
+	gprogram->link();
+
+  lightvs = new QOpenGLShader(QOpenGLShader::Vertex, this);
+	lightvs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/shaders/light.vert");
+	lightfs = new QOpenGLShader(QOpenGLShader::Fragment, this);
+	lightfs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/shaders/light.frag");
+  lightProgram = new QOpenGLShaderProgram(this);
+  lightProgram->addShader(lightvs);
+	lightProgram->addShader(lightfs);
+  lightProgram->link();
+
+	if (!ssaoProgram->isLinked()) cout << "Shader link error" << endl; 
+  if (!lightProgram->isLinked()) cout << "Shader link error" << endl; 
+	if (!gprogram->isLinked()) cout << "Shader link error" << endl; 
 }
 
 void SSAO::preFrame()
@@ -110,17 +125,11 @@ bool SSAO::drawObjectFB(unsigned int i)
 {
   GLWidget &g = *glwidget();
 
-  //gprogram->setUniformValue("texture_diffuse", 3);
-
-  //g.glActiveTexture(GL_TEXTURE3);
-  //g.glBindTexture(GL_TEXTURE_2D, textures_diffuse[i]);
-
 	g.glBindVertexArray(VAOs[i]);
  
 	g.glDrawArrays(GL_TRIANGLES, 0, numIndices[i]);
 	
   g.glBindVertexArray(0);
-  //g.glBindTexture(GL_TEXTURE_2D, 0);
 	return true; // return true only if implemented
 }
 
@@ -142,8 +151,8 @@ bool SSAO::paintGL()
 	QMatrix4x4 MVP = camera()->projectionMatrix() * camera()->viewMatrix();
   gBuf->bind();
 	gprogram->bind();
-	gprogram->setUniformValue("MVP", MVP);
-	//g.glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+	gprogram->setUniformValue("view", camera()->viewMatrix());
+  gprogram->setUniformValue("projection", camera()->projectionMatrix());
   g.glClearColor(0, 0, 0, 0);
   g.glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
   for (unsigned int i=0; i < scene()->objects().size(); i++)
@@ -151,33 +160,57 @@ bool SSAO::paintGL()
 
   gBuf->release();
   gprogram->release();
-  g.glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 
   ssaoBuf->bind();
-  ssaoProgram->bind();
-  ssaoProgram->setUniformValue("gPosition", 0);
-  ssaoProgram->setUniformValue("gNormal", 1);
-  ssaoProgram->setUniformValue("texNoise", 2);
-  ssaoProgram->setUniformValueArray("samples", ssaoKernel.data(), ssaoKernel.size());
-  ssaoProgram->setUniformValue("projection", camera()->projectionMatrix());
+  g.glClear(GL_COLOR_BUFFER_BIT);
+  if (useAO) {
+    ssaoProgram->bind();
+    ssaoProgram->setUniformValue("gPosition", 0);
+    ssaoProgram->setUniformValue("gNormal", 1);
+    ssaoProgram->setUniformValue("texNoise", 2);
+    ssaoProgram->setUniformValueArray("samples", ssaoKernel.data(), ssaoKernel.size());
+    ssaoProgram->setUniformValue("projection", camera()->projectionMatrix());
 
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, gBuf->textures()[0]);
-  glActiveTexture(GL_TEXTURE1);
-  glBindTexture(GL_TEXTURE_2D, gBuf->textures()[1]);
-  glActiveTexture(GL_TEXTURE2);
-  glBindTexture(GL_TEXTURE_2D, noiseTexture);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, gBuf->textures()[0]);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, gBuf->textures()[1]);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, noiseTexture);
 
-  drawQuad();
+    drawQuad();
 
-  g.glActiveTexture(GL_TEXTURE0);
-  g.glBindTexture(GL_TEXTURE_2D, 0);
-  g.glActiveTexture(GL_TEXTURE1);
-  g.glBindTexture(GL_TEXTURE_2D, 0);
-  g.glActiveTexture(GL_TEXTURE2);
-  g.glBindTexture(GL_TEXTURE_2D, 0);
+    g.glActiveTexture(GL_TEXTURE0);
+    g.glBindTexture(GL_TEXTURE_2D, 0);
+    g.glActiveTexture(GL_TEXTURE1);
+    g.glBindTexture(GL_TEXTURE_2D, 0);
+    g.glActiveTexture(GL_TEXTURE2);
+    g.glBindTexture(GL_TEXTURE_2D, 0);
+    ssaoProgram->release();
+  } else {
+    nossaoProgram->bind();
+    drawQuad();
+    nossaoProgram->release();
+  }
   ssaoBuf->release();
-  ssaoProgram->release();
+
+  if (useBlur) {
+    blurBuf->bind();
+    g.glClear(GL_COLOR_BUFFER_BIT);
+    blurProgram->bind();
+    blurProgram->setUniformValue("ssaoInput", 0);
+
+    g.glActiveTexture(GL_TEXTURE0);
+    g.glBindTexture(GL_TEXTURE_2D, ssaoBuf->textures()[0]);
+
+    drawQuad();
+
+    g.glActiveTexture(GL_TEXTURE0);
+    g.glBindTexture(GL_TEXTURE_2D, 0);
+
+    blurProgram->release();
+    blurBuf->release();
+  }
 
   g.glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 	lightProgram->bind();
@@ -185,9 +218,10 @@ bool SSAO::paintGL()
   lightProgram->setUniformValue("gPosition", 0);
   lightProgram->setUniformValue("gNormal", 1);
   lightProgram->setUniformValue("gAlbedoSpec", 2);
+  lightProgram->setUniformValue("ssao", 3);
   lightProgram->setUniformValue("radius", radius);
-  lightProgram->setUniformValue("lightPosition",  QVector3D(1.5,1.5,1.5));
-  lightProgram->setUniformValue("lightColor", QVector3D(1,1,1));
+  lightProgram->setUniformValue("lightPosition", QVector3D(0, 1, 1));
+  lightProgram->setUniformValue("lightColor", QVector3D(1,0,0));
   lightProgram->setUniformValue("MVP", MVP);
 
   g.glActiveTexture(GL_TEXTURE0);
@@ -196,6 +230,9 @@ bool SSAO::paintGL()
   g.glBindTexture(GL_TEXTURE_2D, gBuf->textures()[1]);
   g.glActiveTexture(GL_TEXTURE2);
   g.glBindTexture(GL_TEXTURE_2D, gBuf->textures()[2]);
+  g.glActiveTexture(GL_TEXTURE3);
+  if (useBlur) g.glBindTexture(GL_TEXTURE_2D, blurBuf->textures()[0]);
+  else g.glBindTexture(GL_TEXTURE_2D, ssaoBuf->textures()[0]);
 
   drawQuad();
 
@@ -205,14 +242,20 @@ bool SSAO::paintGL()
   g.glBindTexture(GL_TEXTURE_2D, 0);
   g.glActiveTexture(GL_TEXTURE2);
   g.glBindTexture(GL_TEXTURE_2D, 0);
+  g.glActiveTexture(GL_TEXTURE3);
+  g.glBindTexture(GL_TEXTURE_2D, 0);
   lightProgram->release();
 	
 	return true;
 }
 
-void SSAO::keyPressEvent(QKeyEvent *)
+void SSAO::keyPressEvent(QKeyEvent *e)
 {
-	
+  if (e->key() == Qt::Key_C) {
+    useAO = !useAO;
+  } else if (e->key() == Qt::Key_B) {
+    useBlur = !useBlur;
+  }
 }
 
 void SSAO::mouseMoveEvent(QMouseEvent *)
@@ -378,22 +421,20 @@ void SSAO::loadTexture() {
 void SSAO::setFrameBuffer() {
 
   GLWidget& g = *glwidget();
-	// g.glGenFramebuffers(1, &gBuffer);
-	// g.glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
-
 
   const unsigned int SCR_WIDTH = 1280;
   const unsigned int SCR_HEIGHT = 720;
 
-  gBuf = new QOpenGLFramebufferObject(SCR_WIDTH, SCR_HEIGHT, QOpenGLFramebufferObject::CombinedDepthStencil);
-  gBuf->addColorAttachment(SCR_WIDTH, SCR_HEIGHT);
-  gBuf->addColorAttachment(SCR_WIDTH, SCR_HEIGHT);
+  gBuf = new QOpenGLFramebufferObject(SCR_WIDTH, SCR_HEIGHT, QOpenGLFramebufferObject::Depth, GL_TEXTURE_2D, GL_RGB16F);
+  gBuf->addColorAttachment(SCR_WIDTH, SCR_HEIGHT, GL_RGB16F);
+  gBuf->addColorAttachment(SCR_WIDTH, SCR_HEIGHT, GL_RGB);
 
   unsigned int attachments[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
   g.glDrawBuffers(3, attachments);
 
-  ssaoBuf = new QOpenGLFramebufferObject(SCR_WIDTH, SCR_HEIGHT, QOpenGLFramebufferObject::CombinedDepthStencil);
+  ssaoBuf = new QOpenGLFramebufferObject(SCR_WIDTH, SCR_HEIGHT, QOpenGLFramebufferObject::NoAttachment, GL_TEXTURE_2D, GL_RED);
 
+  blurBuf = new QOpenGLFramebufferObject(SCR_WIDTH, SCR_HEIGHT, QOpenGLFramebufferObject::NoAttachment, GL_TEXTURE_2D, GL_RED);
 }
 
 float lerp(float a, float b, float f) {
@@ -427,7 +468,7 @@ void SSAO::genKernels() {
 
   g.glGenTextures(1, &noiseTexture);
   g.glBindTexture(GL_TEXTURE_2D, noiseTexture);
-  g.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, 4, 4, 0, GL_RGB, GL_FLOAT, &ssaoNoise[0]);
+  g.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB32F, 4, 4, 0, GL_RGB, GL_FLOAT, &ssaoNoise[0]);
   g.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   g.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   g.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);

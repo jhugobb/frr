@@ -1,2 +1,2 @@
-TARGET     = $$qtLibraryTarget(SSAO2)
+TARGET     = $$qtLibraryTarget(SSAO1)
 include(../common.pro)
