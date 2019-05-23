@@ -4,6 +4,7 @@
 #include "plugin.h" 
 #include <cmath>
 #include <QOpenGLFramebufferObject>
+#include <QPainter>
 #include <random>
 
 class SSAO: public QObject, public Plugin
@@ -26,25 +27,38 @@ class SSAO: public QObject, public Plugin
 
 	 void keyPressEvent(QKeyEvent *);
 	 void mouseMoveEvent(QMouseEvent *);
+
+	public slots:
+    void updateFPS();
   private:
 	// add private methods and attributes here
 		void addVBO(unsigned int);
 		void loadTexture();
 		void drawQuad();
+		void regularAO();
+		void separableAOY();
+		void separableAOX();
 		void setQuad();
 		void setFrameBuffer();
 		void genKernels();
 		void genQuad();
 		void setUpShaders();
+		void changeKernelSize();
+		void changeRadius();
+		void changeBias();
 
 		QOpenGLShaderProgram* ssaoProgram;
 		QOpenGLShaderProgram* gprogram;
 		QOpenGLShaderProgram* lightProgram;
 		QOpenGLShaderProgram* nossaoProgram;
+		QOpenGLShaderProgram* sepssaoXProgram;
+		QOpenGLShaderProgram* sepssaoYProgram;
 		QOpenGLShaderProgram* blurProgram;
     QOpenGLShader* ssaovs;
     QOpenGLShader* ssaofs;  
 		QOpenGLShader* nossaofs;
+		QOpenGLShader* sepssaoXfs;
+		QOpenGLShader* sepssaoYfs;
 		QOpenGLShader* blurfs;
 		QOpenGLShader* gvs;
 		QOpenGLShader* gfs;
@@ -55,9 +69,13 @@ class SSAO: public QObject, public Plugin
 
 		QVector3D lightPos;
 
-		float radius;
 		bool useAO;
 		bool useBlur;
+		bool useNormal;
+
+		float current;
+		float previous;
+		QPainter painter;
 
 		// We will create a VBO for each object in the scene
     vector<GLuint> VAOs;          // ID of VAOs
@@ -78,10 +96,15 @@ class SSAO: public QObject, public Plugin
 		QOpenGLFramebufferObject *gBuf;
 		QOpenGLFramebufferObject *ssaoBuf;
 		QOpenGLFramebufferObject *blurBuf;
+		QOpenGLFramebufferObject *sepBufX;
+		QOpenGLFramebufferObject *sepBufY;
 
 		// SSAO
 		GLuint noiseTexture;
 		std::vector<QVector3D> ssaoKernel;
+		unsigned int kernelSize;
+		float radius;
+		float bias;
 };
 
 #endif

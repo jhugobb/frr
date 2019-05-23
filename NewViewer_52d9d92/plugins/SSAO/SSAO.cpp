@@ -10,6 +10,13 @@ void SSAO::onSceneClear() {
   cleanUp();
 }
 
+
+void SSAO::updateFPS() {
+  current = previous;
+  previous = 0;
+  glwidget()->update();
+}
+
 void SSAO::cleanUp() {
   GLWidget &g = *glwidget();
   g.makeCurrent();
@@ -51,11 +58,22 @@ void SSAO::onPluginLoad()
   float quadratic = 1.8;
   radius = (-linear + std::sqrt(linear * linear - 4 * quadratic * (constant - (256.0f / 5.0f)))) / (2.0f * quadratic);
 
+  kernelSize = 64;
+  radius = 0.5;
+  bias = 0.025;
   setFrameBuffer();
   genQuad();
-  genKernels(); 
+  genKernels();
+
+  // Initialises FPS counter
+  current=previous=0;
+  QTimer *timer=new QTimer(this);
+  connect(timer, SIGNAL(timeout()), this, SLOT(updateFPS()));
+  timer->start(1000);
+
   useAO = false;
   useBlur = false;
+  useNormal = true;
   g.resize(1280, 720);
 }
 
@@ -75,6 +93,20 @@ void SSAO::setUpShaders() {
   nossaoProgram->addShader(ssaovs);
   nossaoProgram->addShader(nossaofs);
   nossaoProgram->link();
+
+  sepssaoXfs = new QOpenGLShader(QOpenGLShader::Fragment, this);
+	sepssaoXfs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/shaders/sepssaoX.frag");
+  sepssaoXProgram = new QOpenGLShaderProgram(this);
+  sepssaoXProgram->addShader(ssaovs);
+  sepssaoXProgram->addShader(sepssaoXfs);
+  sepssaoXProgram->link();
+
+  sepssaoYfs = new QOpenGLShader(QOpenGLShader::Fragment, this);
+	sepssaoYfs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/shaders/sepssaoY.frag");
+  sepssaoYProgram = new QOpenGLShaderProgram(this);
+  sepssaoYProgram->addShader(ssaovs);
+  sepssaoYProgram->addShader(sepssaoYfs);
+  sepssaoYProgram->link();
 
   blurfs = new QOpenGLShader(QOpenGLShader::Fragment, this);
   blurfs->compileSourceFile(glwidget()->getPluginPath()+"/../SSAO/shaders/blurssao.frag");
@@ -113,7 +145,17 @@ void SSAO::preFrame()
 
 void SSAO::postFrame()
 {
+  painter.begin(glwidget());
+  painter.setPen(Qt::white);
+  painter.drawText(10,15, QString("%0 fps").arg(current));
+  painter.drawText(10,35, QString("SSAO: %0").arg(useAO));
+  painter.drawText(10,55, QString("Separable: %0").arg(!useNormal));
+  painter.drawText(10,75, QString("Blur: %0").arg(useBlur));
+  painter.drawText(10,95, QString("Radius: %0").arg(radius));
+  painter.drawText(10,115, QString("Sample Size: %0").arg(kernelSize));
+  painter.end();
 
+  ++previous;
 }
 
 void SSAO::onObjectAdd()
@@ -142,32 +184,18 @@ void SSAO::drawQuad()
   g.glBindVertexArray(0);
 }
 
-bool SSAO::paintGL()
-{
-	GLWidget &g = *glwidget();
-	g.makeCurrent();
-	g.glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-	// G buffer pass
-	QMatrix4x4 MVP = camera()->projectionMatrix() * camera()->viewMatrix();
-  gBuf->bind();
-	gprogram->bind();
-	gprogram->setUniformValue("view", camera()->viewMatrix());
-  gprogram->setUniformValue("projection", camera()->projectionMatrix());
-  g.glClearColor(0, 0, 0, 0);
-  g.glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-  for (unsigned int i=0; i < scene()->objects().size(); i++)
-	  drawObjectFB(i);
-
-  gBuf->release();
-  gprogram->release();
-
+void SSAO::regularAO() {
+  GLWidget &g = *glwidget();
   ssaoBuf->bind();
   g.glClear(GL_COLOR_BUFFER_BIT);
-  if (useAO) {
     ssaoProgram->bind();
     ssaoProgram->setUniformValue("gPosition", 0);
     ssaoProgram->setUniformValue("gNormal", 1);
     ssaoProgram->setUniformValue("texNoise", 2);
+    ssaoProgram->setUniformValue("kernelSize", kernelSize);
+    ssaoProgram->setUniformValue("radius", radius);
+    ssaoProgram->setUniformValue("bias", bias);
+
     ssaoProgram->setUniformValueArray("samples", ssaoKernel.data(), ssaoKernel.size());
     ssaoProgram->setUniformValue("projection", camera()->projectionMatrix());
 
@@ -187,11 +215,7 @@ bool SSAO::paintGL()
     g.glActiveTexture(GL_TEXTURE2);
     g.glBindTexture(GL_TEXTURE_2D, 0);
     ssaoProgram->release();
-  } else {
-    nossaoProgram->bind();
-    drawQuad();
-    nossaoProgram->release();
-  }
+
   ssaoBuf->release();
 
   if (useBlur) {
@@ -210,6 +234,135 @@ bool SSAO::paintGL()
 
     blurProgram->release();
     blurBuf->release();
+  }
+}
+
+void SSAO::separableAOX() {
+  GLWidget &g = *glwidget();
+  sepBufX->bind();
+  g.glClear(GL_COLOR_BUFFER_BIT);
+  sepssaoXProgram->bind();
+  sepssaoXProgram->setUniformValue("gPosition", 0);
+  sepssaoXProgram->setUniformValue("gNormal", 1);
+  sepssaoXProgram->setUniformValue("texNoise", 2);
+  sepssaoXProgram->setUniformValue("kernelSize", kernelSize);
+  sepssaoXProgram->setUniformValue("radius", radius);
+  sepssaoXProgram->setUniformValue("bias", bias);
+
+  sepssaoXProgram->setUniformValueArray("samples", ssaoKernel.data(), ssaoKernel.size());
+  sepssaoXProgram->setUniformValue("projection", camera()->projectionMatrix());
+
+  g.glActiveTexture(GL_TEXTURE0);
+  g.glBindTexture(GL_TEXTURE_2D, gBuf->textures()[0]);
+  g.glActiveTexture(GL_TEXTURE1);
+  g.glBindTexture(GL_TEXTURE_2D, gBuf->textures()[1]);
+  g.glActiveTexture(GL_TEXTURE2);
+  g.glBindTexture(GL_TEXTURE_2D, noiseTexture);
+
+  drawQuad();
+
+  g.glActiveTexture(GL_TEXTURE0);
+  g.glBindTexture(GL_TEXTURE_2D, 0);
+  g.glActiveTexture(GL_TEXTURE1);
+  g.glBindTexture(GL_TEXTURE_2D, 0);
+  g.glActiveTexture(GL_TEXTURE2);
+  g.glBindTexture(GL_TEXTURE_2D, 0);
+
+  sepssaoXProgram->release();
+  sepBufX->release();
+
+}
+
+void SSAO::separableAOY() {
+  GLWidget &g = *glwidget();
+  sepBufY->bind();
+  g.glClear(GL_COLOR_BUFFER_BIT);
+    sepssaoYProgram->bind();
+    sepssaoYProgram->setUniformValue("gPosition", 0);
+    sepssaoYProgram->setUniformValue("gNormal", 1);
+    sepssaoYProgram->setUniformValue("texNoise", 2);
+    sepssaoYProgram->setUniformValue("xOcc", 3);
+    sepssaoYProgram->setUniformValue("kernelSize", kernelSize);
+    sepssaoYProgram->setUniformValue("radius", radius);
+    sepssaoYProgram->setUniformValue("bias", bias);
+
+    sepssaoYProgram->setUniformValueArray("samples", ssaoKernel.data(), ssaoKernel.size());
+    sepssaoYProgram->setUniformValue("projection", camera()->projectionMatrix());
+
+    g.glActiveTexture(GL_TEXTURE0);
+    g.glBindTexture(GL_TEXTURE_2D, gBuf->textures()[0]);
+    g.glActiveTexture(GL_TEXTURE1);
+    g.glBindTexture(GL_TEXTURE_2D, gBuf->textures()[1]);
+    g.glActiveTexture(GL_TEXTURE2);
+    g.glBindTexture(GL_TEXTURE_2D, noiseTexture);
+    g.glActiveTexture(GL_TEXTURE3);
+    g.glBindTexture(GL_TEXTURE_2D, sepBufX->textures()[0]);
+
+    drawQuad();
+
+    g.glActiveTexture(GL_TEXTURE0);
+    g.glBindTexture(GL_TEXTURE_2D, 0);
+    g.glActiveTexture(GL_TEXTURE1);
+    g.glBindTexture(GL_TEXTURE_2D, 0);
+    g.glActiveTexture(GL_TEXTURE2);
+    g.glBindTexture(GL_TEXTURE_2D, 0);
+    g.glActiveTexture(GL_TEXTURE3);
+    g.glBindTexture(GL_TEXTURE_2D, 0);
+
+    sepssaoYProgram->release();
+  sepBufY->release();
+
+  if (useBlur) {
+    blurBuf->bind();
+    g.glClear(GL_COLOR_BUFFER_BIT);
+    blurProgram->bind();
+    blurProgram->setUniformValue("ssaoInput", 0);
+
+    g.glActiveTexture(GL_TEXTURE0);
+    g.glBindTexture(GL_TEXTURE_2D, sepBufY->textures()[0]);
+
+    drawQuad();
+
+    g.glActiveTexture(GL_TEXTURE0);
+    g.glBindTexture(GL_TEXTURE_2D, 0);
+
+    blurProgram->release();
+    blurBuf->release();
+  }
+}
+
+bool SSAO::paintGL()
+{
+	GLWidget &g = *glwidget();
+	g.makeCurrent();
+	g.glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+	// G buffer pass
+	QMatrix4x4 MVP = camera()->projectionMatrix() * camera()->viewMatrix();
+  gBuf->bind();
+	gprogram->bind();
+	gprogram->setUniformValue("view", camera()->viewMatrix());
+  gprogram->setUniformValue("projection", camera()->projectionMatrix());
+  g.glClearColor(0, 0, 0, 0);
+  g.glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+  for (unsigned int i=0; i < scene()->objects().size(); i++)
+	  drawObjectFB(i);
+
+  gBuf->release();
+  gprogram->release();
+  
+  if (useAO) {
+    if (useNormal) regularAO();
+    else {
+      separableAOX();
+      separableAOY();
+    }
+  } else {
+    ssaoBuf->bind();
+    g.glClear(GL_COLOR_BUFFER_BIT);
+    nossaoProgram->bind();
+    drawQuad();
+    nossaoProgram->release();
+    ssaoBuf->release();
   }
 
   g.glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
@@ -231,9 +384,10 @@ bool SSAO::paintGL()
   g.glActiveTexture(GL_TEXTURE2);
   g.glBindTexture(GL_TEXTURE_2D, gBuf->textures()[2]);
   g.glActiveTexture(GL_TEXTURE3);
-  if (useBlur) g.glBindTexture(GL_TEXTURE_2D, blurBuf->textures()[0]);
-  else g.glBindTexture(GL_TEXTURE_2D, ssaoBuf->textures()[0]);
-
+  if (!useAO) g.glBindTexture(GL_TEXTURE_2D, ssaoBuf->textures()[0]);
+  else if (useBlur) g.glBindTexture(GL_TEXTURE_2D, blurBuf->textures()[0]);
+  else if (useNormal) g.glBindTexture(GL_TEXTURE_2D, ssaoBuf->textures()[0]);
+       else g.glBindTexture(GL_TEXTURE_2D, sepBufY->textures()[0]);
   drawQuad();
 
   g.glActiveTexture(GL_TEXTURE0);
@@ -255,6 +409,14 @@ void SSAO::keyPressEvent(QKeyEvent *e)
     useAO = !useAO;
   } else if (e->key() == Qt::Key_B) {
     useBlur = !useBlur;
+  } else if (e->key() == Qt::Key_K) {
+    changeKernelSize();
+  } else if (e->key() == Qt::Key_R) {
+    changeRadius();
+  } else if (e->key() == Qt::Key_P) {
+    changeBias();
+  } else if (e->key() == Qt::Key_Y) {
+    useNormal = !useNormal;
   }
 }
 
@@ -435,6 +597,10 @@ void SSAO::setFrameBuffer() {
   ssaoBuf = new QOpenGLFramebufferObject(SCR_WIDTH, SCR_HEIGHT, QOpenGLFramebufferObject::NoAttachment, GL_TEXTURE_2D, GL_RED);
 
   blurBuf = new QOpenGLFramebufferObject(SCR_WIDTH, SCR_HEIGHT, QOpenGLFramebufferObject::NoAttachment, GL_TEXTURE_2D, GL_RED);
+
+  sepBufX = new QOpenGLFramebufferObject(SCR_WIDTH, SCR_HEIGHT, QOpenGLFramebufferObject::NoAttachment, GL_TEXTURE_2D, GL_RED);
+  sepBufY = new QOpenGLFramebufferObject(SCR_WIDTH, SCR_HEIGHT, QOpenGLFramebufferObject::NoAttachment, GL_TEXTURE_2D, GL_RED); 
+
 }
 
 float lerp(float a, float b, float f) {
@@ -445,11 +611,11 @@ void SSAO::genKernels() {
   GLWidget& g = *glwidget();
   std::uniform_real_distribution<GLfloat> randomFloats(0.0, 1.0); // generates random floats between 0.0 and 1.0
   std::default_random_engine generator;
-  for (unsigned int i = 0; i < 64; ++i) {
+  for (unsigned int i = 0; i < kernelSize; ++i) {
     QVector3D sample(randomFloats(generator) * 2.0 - 1.0, randomFloats(generator) * 2.0 - 1.0, randomFloats(generator));
     sample.normalize();
     sample *= randomFloats(generator);
-    float scale = float(i) / 64.0;
+    float scale = float(i) / kernelSize;
 
     // scale samples s.t. they're more aligned to center of kernel
     scale = lerp(0.1f, 1.0f, scale * scale);
@@ -474,4 +640,48 @@ void SSAO::genKernels() {
   g.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   g.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
+}
+
+void SSAO::changeKernelSize() {
+  int x;
+  do {
+  cout << "Please input a positive Integer that is a power of 2 for the NUMBER OF SAMPLES: ";
+  cin >> x;
+  } while (!(x && (!(x&(x-1)))));
+  
+  kernelSize = x;
+  ssaoKernel.clear();
+  std::uniform_real_distribution<GLfloat> randomFloats(0.0, 1.0); // generates random floats between 0.0 and 1.0
+  std::default_random_engine generator;
+  for (unsigned int i = 0; i < kernelSize; ++i) {
+    QVector3D sample(randomFloats(generator) * 2.0 - 1.0, 0, 0);
+    sample.normalize();
+    sample *= randomFloats(generator);
+    float scale = float(i) / kernelSize;
+
+    // scale samples s.t. they're more aligned to center of kernel
+    scale = lerp(0.1f, 1.0f, scale * scale);
+    sample *= scale;
+    ssaoKernel.push_back(sample);
+  }
+}
+
+void SSAO::changeRadius() {
+  double x;
+  do {
+  cout << "Please input a positive double for the RADIUS: ";
+  cin >> x;
+  } while (x <= 0);
+  
+  radius = x;
+}
+
+void SSAO::changeBias() {
+  double x;
+  do {
+  cout << "Please input a positive double for the BIAS: ";
+  cin >> x;
+  } while (x <= 0);
+  
+  bias = x;
 }

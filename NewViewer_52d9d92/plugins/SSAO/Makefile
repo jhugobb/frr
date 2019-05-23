@@ -870,6 +870,10 @@ build/moc_SSAO.cpp: SSAO.h \
 		/home/yellow/Qt/5.12.2/gcc_64/include/QtGui/qopenglshaderprogram.h \
 		/home/yellow/Qt/5.12.2/gcc_64/include/QtGui/QOpenGLFramebufferObject \
 		/home/yellow/Qt/5.12.2/gcc_64/include/QtGui/qopenglframebufferobject.h \
+		/home/yellow/Qt/5.12.2/gcc_64/include/QtGui/QPainter \
+		/home/yellow/Qt/5.12.2/gcc_64/include/QtGui/qpainter.h \
+		/home/yellow/Qt/5.12.2/gcc_64/include/QtGui/qtextoption.h \
+		/home/yellow/Qt/5.12.2/gcc_64/include/QtGui/qpen.h \
 		build/moc_predefs.h \
 		/home/yellow/Qt/5.12.2/gcc_64/bin/moc
 	/home/yellow/Qt/5.12.2/gcc_64/bin/moc $(DEFINES) --include /home/yellow/Desktop/MIRI/2/frr/NewViewer_52d9d92/plugins/SSAO/build/moc_predefs.h -I/home/yellow/Qt/5.12.2/gcc_64/mkspecs/linux-g++ -I/home/yellow/Desktop/MIRI/2/frr/NewViewer_52d9d92/plugins/SSAO -I/home/yellow/Desktop/MIRI/2/frr/NewViewer_52d9d92/plugins/SSAO/include -I/home/yellow/Desktop/MIRI/2/frr/NewViewer_52d9d92/viewer/glwidget/include -I/home/yellow/Desktop/MIRI/2/frr/NewViewer_52d9d92/viewer/interfaces -I/home/yellow/Desktop/MIRI/2/frr/NewViewer_52d9d92/viewer/core/include -I/usr/include/libdrm -I/home/yellow/Qt/5.12.2/gcc_64/include -I/home/yellow/Qt/5.12.2/gcc_64/include/QtOpenGL -I/home/yellow/Qt/5.12.2/gcc_64/include/QtWidgets -I/home/yellow/Qt/5.12.2/gcc_64/include/QtGui -I/home/yellow/Qt/5.12.2/gcc_64/include/QtCore -I/usr/include/c++/7 -I/usr/include/x86_64-linux-gnu/c++/7 -I/usr/include/c++/7/backward -I/usr/lib/gcc/x86_64-linux-gnu/7/include -I/usr/local/include -I/usr/lib/gcc/x86_64-linux-gnu/7/include-fixed -I/usr/include/x86_64-linux-gnu -I/usr/include SSAO.h -o build/moc_SSAO.cpp
@@ -1049,7 +1053,11 @@ build/SSAO.o: SSAO.cpp SSAO.h \
 		/home/yellow/Qt/5.12.2/gcc_64/include/QtGui/QOpenGLShaderProgram \
 		/home/yellow/Qt/5.12.2/gcc_64/include/QtGui/qopenglshaderprogram.h \
 		/home/yellow/Qt/5.12.2/gcc_64/include/QtGui/QOpenGLFramebufferObject \
-		/home/yellow/Qt/5.12.2/gcc_64/include/QtGui/qopenglframebufferobject.h
+		/home/yellow/Qt/5.12.2/gcc_64/include/QtGui/qopenglframebufferobject.h \
+		/home/yellow/Qt/5.12.2/gcc_64/include/QtGui/QPainter \
+		/home/yellow/Qt/5.12.2/gcc_64/include/QtGui/qpainter.h \
+		/home/yellow/Qt/5.12.2/gcc_64/include/QtGui/qtextoption.h \
+		/home/yellow/Qt/5.12.2/gcc_64/include/QtGui/qpen.h
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/SSAO.o SSAO.cpp
 
 build/moc_SSAO.o: build/moc_SSAO.cpp 
